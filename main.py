@@ -32,26 +32,25 @@ class PromptImprovement:
             return ""
 
     def analyze_output(self, prompt: str, output_text: str) -> Tuple[str, str]:
-        analysis_prompt = (
-            f"I will present the prompts presented to LLM and their outputs. First, analyze the prompt and the output content. Next, evaluate the prompt based on the analysis. Finally, present your strengths and weaknesses to complement the prompt:\n\n"
+        system_prompt = "Your task is to provide feedback on a user's prompt in a clear and friendly manner. Focus on making your suggestions easy for everyone to understand. For example, try breaking down long sentences into shorter ones and using simpler words. Present your feedback using this structure: {'goods': [...], 'bads': [...]}."
+        user_prompt = (
             f"Prompt: {prompt}\n\n"
             f"Output: {output_text}\n\n"
-            "Please return the analysis in JSON format.{'good_parts':string, 'bad_parts':string}"
         )
 
         try:
             response = self.client.chat.completions.create(
                 model=self.model_name,
-                messages=[{"role": "user", "content": analysis_prompt}],
+                messages=[{"role": "user", "content": system_prompt},{"role": "user", "content": user_prompt}],
                 response_format={"type": "json_object"}
             )
 
             analysis_output = response.choices[0].message.content
             json_output = json.loads(analysis_output)
 
-            good_parts = json_output.get("good_parts", "")
-            bad_parts = json_output.get("bad_parts", "")
-            return good_parts, bad_parts
+            goods = json_output.get("goods", "")
+            bads = json_output.get("bads", "")
+            return goods, bads
         except json.JSONDecodeError as e:
             logging.error(f"JSON decoding failed: {e}")
             return "", ""
@@ -59,11 +58,11 @@ class PromptImprovement:
             logging.error(f"Unexpected error during analysis: {e}")
             return "", ""
 
-    def update_prompt(self, original_prompt: str, good_parts: str, bad_parts: str) -> Tuple[str, str]:
-        system_prompt = "Your job is to improve and simplify a user-provided prompt by focusing on its strengths and weaknesses. Analyze the feedback from the user to create a clearer, engaging, and easy-to-understand version. Avoid using complex technical jargon and aim to explain ideas in a straightforward way, especially for beginners. Provide specific examples of potential improvements, such as simplifying code snippets or giving clearer explanations. Present your revised prompt in a JSON format and include a short list of key enhancements made."
+    def update_prompt(self, original_prompt: str, goods: str, bads: str) -> Tuple[str, str]:
+        system_prompt = "Your job is to improve and simplify a user-provided prompt by focusing on its strengths and weaknesses. Analyze the feedback from the user to create a clearer, engaging, and easy-to-understand version. Avoid using complex technical jargon and aim to explain ideas in a straightforward way, especially for beginners. Provide specific examples of potential improvements, such as simplifying code snippets or giving clearer explanations. Present your revised prompt in a JSON format like this: {'updated_prompt': '...', 'key_improvements': ['...', '...', '...']}."
         user_prompt = (f"Original Prompt: {original_prompt}\n\n"
-            f"Good Parts: {good_parts}\n\n"
-            f"Bad Parts: {bad_parts}\n\n")
+            f"Good Parts: {goods}\n\n"
+            f"Bad Parts: {bads}\n\n")
 
         try:
             response = self.client.chat.completions.create(
@@ -83,7 +82,7 @@ class PromptImprovement:
             logging.error(f"Unexpected error during prompt update: {e}")
             return "", ""
 
-    def recursive_prompt_upgrade(self,remain_rounds: int, initial_prompt: str, user_prompt: str | None = None) -> str:
+    def recursive_prompt_upgrade(self,remain_rounds: int, initial_prompt: str, user_prompt: str | None) -> str:
         if remain_rounds <= 0:
             logging.info("Final prompt after upgrades:")
             logging.info(initial_prompt)
@@ -91,27 +90,26 @@ class PromptImprovement:
 
         try:
             if(user_prompt is None):
-                response = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=[{"role": "user", "content": initial_prompt}]
-                )
+                messages = [{"role": "user", "content": initial_prompt}]
             else: 
-                response = self.client.chat.completions.create(
+                messages = [{"role": "system", "content": initial_prompt},{"role": "user", "content": user_prompt}]
+                
+            response = self.client.chat.completions.create(
                     model=self.model_name,
-                    messages=[{"role": "system", "content": initial_prompt},{"role": "user", "content": user_prompt}]
+                    messages=messages
                 )
 
             output_text = response.choices[0].message.content
 
-            good_parts, bad_parts = self.analyze_output(initial_prompt, output_text)
+            goods, bads = self.analyze_output(initial_prompt, output_text)
 
-            updated_prompt, key_improvements = self.update_prompt(initial_prompt, good_parts, bad_parts)
+            updated_prompt, key_improvements = self.update_prompt(initial_prompt, goods, bads)
 
             logging.info(f"------------------------Life: {remain_rounds}------------------------")
             logging.info(f"Initial Prompt: {initial_prompt}")
             logging.info(f"Output Text: {output_text}")
-            logging.info(f"Good Parts: {good_parts}")
-            logging.info(f"Bad Parts: {bad_parts}")
+            logging.info(f"Good Parts: {goods}")
+            logging.info(f"Bad Parts: {bads}")
             logging.info(f"Key Improvements: {key_improvements}")
 
             return self.recursive_prompt_upgrade(remain_rounds - 1, updated_prompt, user_prompt)
@@ -121,8 +119,8 @@ class PromptImprovement:
 
 if __name__ == "__main__":
     prompt_enhancer = PromptImprovement(model_name="gpt-4o-mini")
-    initial_prompt = "You are a prompt improver. The user will present the 'original prompt', 'the strength of the prompt', and 'the bad of the prompt'. Improve the prompt based on the results of this analysis. Please suggest an improved version of the prompt in JSON format: {'updated_prompt':string, 'key_improvements':string}"
-    user_prompt = ("Original Prompt: 너는 Magi라는 재귀적 프롬프트 개선 AI다. 사용자가 제공하는 전체 코드를 바탕으로, Magi의 프롬프트 개선 및 업데이트 프로세스에 따라 개선안을 제안하라. 사용자의 코드 개선 방향을 명확히 전달하고, 구체적인 제안은 간결하게 제시하라. 각 제안에 대한 장단점을 논의하고, 사용자가 제공한 코드 샘플에 직접 적용할 수 있는 해당 언어의 관련 코드 예시를 포함하여 사용자가 개선 제안의 영향을 잘 이해할 수 있도록 하라. 친숙하지 않은 프로그래머를 위해 각 제안의 개념과 맥락을 제공하고, 다양한 프로그래밍 언어에서의 적용 가능성을 포함하도록 조정하라. 마지막으로, 재귀적 개선 프로세스의 목표와 작동 방식을 명확히 설명하고, 성능 관련 제안의 경우 사용자에게 가능한 영향을 구체적으로 설명하라.\n\nGood Parts: - The output provides detailed suggestions for code improvements, including specific explanations of each suggestion's merits and drawbacks.\n- Code examples are provided alongside each suggestion, which helps the user understand how to implement the advised changes directly.\n- The suggestions address common coding issues such as exception handling, return value consistency, logging, and documentation, which are crucial for better code quality and maintainability.\n- The output maintains clarity and sufficiency for a programmer who might not be familiar with the nuances of the code, making it suitable for various programming contexts.\n\nBad Parts: - The initial prompt could be overly complex, potentially leading to a misunderstanding of the main goals by the AI. Simplifying the prompt could yield more direct and focused outputs.- The analysis does not explicitly state how the recursive prompt upgrade process works, which is referenced in some suggestions. Clarifying this could enhance understanding.- While the output discusses the importance of the suggestions, it lacks a summary or conclusion that synthesizes the key takeaways from the proposed improvements, which could be helpful for the user.\n\n")
-            
+    initial_prompt =  "Your job is to analyze the strengths and weaknesses of a user-provided prompt and its output. Focus on the prompt's clarity, engagement, and ease of understanding, avoiding complex technical jargon. Provide specific examples of potential improvements, such as simplifying code snippets or giving clearer explanations. Present your analysis in a JSON format and include a short list of key enhancements made. Please return the analysis in JSON format like this: {'goods':string, 'bads':string}"
+    user_prompt = "Prompt: Your task is to enhance and simplify an original prompt based on the strengths and weaknesses provided by the user. Analyze these inputs to generate a clearer, engaging, and contextually appropriate version of the original prompt. Make sure to avoid complex jargon and explain concepts in a way that is easy to understand, especially for beginners. Include specific examples of how the prompt can be improved, such as simplifying certain code snippets or providing clearer explanations. Present your improved prompt in JSON format, along with a brief list of key improvements you made.\n\nOutput: ```json { \"improved_prompt\": \"당신은 Magi라고 불리는 AI로, 재귀적으로 사용자 코드 개선을 지원합니다. 사용자가 제공한 코드를 바탕으로, 개선할 부분을 제안하고 왜 그런지 설명해주세요. 각 제안에는 장점과 단점을 담아 명확히 전달하고, 사용자 코드에 적용할 수 있는 관련 코드 예시를 포함해주세요. 프로그래밍을 잘 모르는 사람도 이해할 수 있도록 제안의 개념을 쉽게 설명해주고, 여러 프로그래밍 언어에서 어떻게 적용할 수 있는지 알려주세요. 마지막으로, 개선 프로세스의 목표와 작동 방식을 간단히 설명하고, 성능 관련 제안이 있을 경우 사용자에게 미칠 수 있는 영향을 명확히 해주세요.\", \"key_improvements\": [ \"간단하고 명확한 언어로 프롬프트 리팩토링\", \"재귀적 개선 프로세스 설명을 추가하여 이해 용이성 증대\", \"각 제안에 대해 요약 및 결론을 추가하여 사용자에게 핵심 내용 정리 제공\", \"코드 예시를 통해 실제 적용을 강조하고, 복잡성 감소\" ] } ``` ### Explanation of Improvements: 1. **Simplified Language**: The revised prompt uses simple and clear language, ensuring that even beginners can easily understand it. 2. **Clarified Process Description**: The prompt now explicitly requests an explanation of the recursive prompt upgrade process, improving comprehension about the AI's functionality. 3. **Summary Request**: By asking for a summary or conclusion, the revisions help users grasp the core ideas from the suggestions provided. 4. **Focused Code Examples**: The instructions emphasize providing relevant code snippets, which helps users see practical applications of the improvements discussed. Overall, this version aligns closely with the strengths of the original but addresses its weaknesses by making it clearer and more engaging."
     max_rounds = 5
+    
     prompt_enhancer.recursive_prompt_upgrade(max_rounds, initial_prompt, user_prompt)
