@@ -5,7 +5,7 @@ import concurrent.futures
 from characters import Character
 from openai import OpenAI
 
-from prompts import SYSTEM_MAGI_PROMPT
+from prompts import PERSONA_PROMPT, SYSTEM_MAGI_PROMPT
 from utils import init_logger
 
 class Magi(Character):
@@ -13,11 +13,38 @@ class Magi(Character):
         self.client = OpenAI()
         self.model_name = model_name
         self.logger = init_logger('Magi')
+        self.original_language = None
+        self.original_purpose = None
         self.characters = [
-            Character(name="👨 Melchior", personas="You are the symbol of the wise old man. You excel in strategic planning and long-term improvements, ensuring that each task is performed with wisdom and achieves the highest performance.", model_name=model_name),
-            Character(name="🧑 Balthasar", personas="You are the symbol of a smart young man. You are good at performing tasks efficiently and economically, and producing clear and concise results. You are strong in data analysis and problem solving, and you systematically manage the progress of your project.", model_name=model_name),
-            Character(name="👶 Caspar", personas="You are the symbol of a creative boy. You excel in generating innovative and out-of-the-box ideas, actively participating in brainstorming sessions and proposing experimental approaches to enhance the project's creativity.", model_name=model_name),
+            Character(name="🧙 Melchior", personas=PERSONA_PROMPT["🧙 Melchior"], model_name=model_name),
+            Character(name="🧑‍💻 Balthasar", personas=PERSONA_PROMPT["🧑‍💻 Balthasar"], model_name=model_name),
+            Character(name="👶 Caspar", personas=PERSONA_PROMPT["👶 Caspar"], model_name=model_name),
         ]
+
+    def translate_to_english(self, text: str) -> str:
+        messages = [
+            {"role": "system", "content": "You are a professional translator. Please translate the given text into English. Present just the translation result."},
+            {"role": "user", "content": f"Translate the following text into English: {text}"}
+        ]
+        out = self.create_completion(messages)
+        return out
+
+    def translate_to_original_language(self, text: str) -> str:
+        messages = [
+            {"role": "system", "content": f"You are a professional translator. Please translate the given text into {self.original_language}. Present just the translation result."},
+            {"role": "user", "content": f"Translate the following text into {self.original_language}: {text}"}
+        ]
+        out = self.create_completion(messages)
+        return out
+
+    def analyze_initial_prompt(self, initial_prompt: str) -> Dict[str, str]:
+        messages = [
+            {"role": "system", "content": "You are an expert in analyzing the initial prompt. Extract the following two pieces of information: 1) The language of the prompt, 2) The user's intention and purpose. Present the result in JSON format like this: {'language': '...', 'intention_and_purpose': '...'}"},
+            {"role": "user", "content": f"Analyze the following prompt: {initial_prompt}"}
+        ]
+        out = self.create_completion(messages)
+        analysis = json.loads(out)
+        return analysis['language'], analysis['intention_and_purpose']
 
     def run_character_prompts(self, initial_prompt: str, rounds: int) -> Dict[str, str]:
         results = {}
@@ -43,7 +70,7 @@ class Magi(Character):
     def compare_and_upgrade(self, results: Dict[str, str], original_prompt: str) -> Tuple[str, List[str]]:
         user_content =  f"Original Prompt: {original_prompt}\n\nImproved Prompt: {results}"
         messages = [
-            {"role": "system", "content": SYSTEM_MAGI_PROMPT},
+            {"role": "system", "content": f'Purpose of the expected user prompt: {self.original_purpose}' + SYSTEM_MAGI_PROMPT},
             {"role": "user", "content": user_content}
         ]
         out = self.create_completion(messages)
@@ -54,10 +81,24 @@ class Magi(Character):
         
 
     def recursive_prompt_upgrade(self, remain_rounds: int, initial_prompt: str, user_prompt: Optional[str] = None) -> str:
+        if not self.original_language:
+            initial_language, initial_purpose = self.analyze_initial_prompt(initial_prompt)
+            self.original_language = initial_language
+            self.original_purpose = initial_purpose
+            initial_prompt = self.translate_to_english(initial_prompt)
+
         if remain_rounds <= 0:
             self.logger.info("Upgrade process completed.")
-            return initial_prompt
-        
+            if self.original_language != 'English':
+                result =  self.translate_to_original_language(initial_prompt)
+            else:
+                result = initial_prompt
+            
+            self.logger.info(Fore.YELLOW + "Final Prompt: "+f"{result}")
+            return result
+
+
+
         self.logger.info(Fore.GREEN + f"------------------------Round { remain_rounds } Start------------------------")
         messages = [{"role": "user", "content": initial_prompt}] if user_prompt is None else [
             {"role": "system", "content": initial_prompt},
