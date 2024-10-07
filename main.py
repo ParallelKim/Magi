@@ -12,11 +12,12 @@ import json
 import logging
 from typing import Tuple
 
-logging.basicConfig(level=logging.INFO)
+# logging.basicConfig(level=logging.INFO)
 
 class PromptImprovement:
     def __init__(self, model_name: str):
-        self.client = OpenAI(model=model_name)
+        self.client = OpenAI()
+        self.model_name = model_name
 
     def read_py_file(self, file_path: str) -> str:
         try:
@@ -40,6 +41,7 @@ class PromptImprovement:
 
         try:
             response = self.client.chat.completions.create(
+                model=self.model_name,
                 messages=[{"role": "user", "content": analysis_prompt}],
                 response_format={"type": "json_object"}
             )
@@ -68,6 +70,7 @@ class PromptImprovement:
 
         try:
             response = self.client.chat.completions.create(
+                model=self.model_name,
                 messages=[{"role": "user", "content": update_prompt_text}],    
                 response_format={"type": "json_object"})
 
@@ -91,6 +94,7 @@ class PromptImprovement:
 
         try:
             response = self.client.chat.completions.create(
+                model=self.model_name,
                 messages=[{"role": "user", "content": initial_prompt}]
             )
 
