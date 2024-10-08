@@ -15,10 +15,24 @@ class Magi(Character):
         self.logger = init_logger('Magi')
         self.original_language = None
         self.original_purpose = None
+        self.max_rounds = None
+
+    def initialize(self, remain_rounds: int, initial_prompt: str):
+        self.max_rounds = remain_rounds
+        messages = [
+            {"role": "system", "content": "You are an expert in analyzing the initial prompt. Extract the following two pieces of information: 1) The language of the prompt, 2) The user's intention and purpose. Present the result in JSON format like this: {'language': '...', 'intention_and_purpose': '...'}"},
+            {"role": "user", "content": f"Analyze the following prompt: {initial_prompt}"}
+        ]
+        out = self.create_completion(messages)
+        analysis = json.loads(out)
+
+        self.original_language = analysis['language']
+        self.original_purpose = analysis['intention_and_purpose']
+
         self.characters = [
-            Character(name="🧙 Melchior", personas=PERSONA_PROMPT["🧙 Melchior"], model_name=model_name),
-            Character(name="🧑‍💻 Balthasar", personas=PERSONA_PROMPT["🧑‍💻 Balthasar"], model_name=model_name),
-            Character(name="👶 Caspar", personas=PERSONA_PROMPT["👶 Caspar"], model_name=model_name),
+            Character(name="🧙 Melchior", personas=PERSONA_PROMPT["🧙 Melchior"], model_name=self.model_name, magi=self),
+            Character(name="🧑‍💻 Balthasar", personas=PERSONA_PROMPT["🧑‍💻 Balthasar"], model_name=self.model_name, magi=self),
+            Character(name="👶 Caspar", personas=PERSONA_PROMPT["👶 Caspar"], model_name=self.model_name, magi=self),
         ]
 
     def translate_to_english(self, text: str) -> str:
@@ -36,15 +50,6 @@ class Magi(Character):
         ]
         out = self.create_completion(messages)
         return out
-
-    def analyze_initial_prompt(self, initial_prompt: str) -> Dict[str, str]:
-        messages = [
-            {"role": "system", "content": "You are an expert in analyzing the initial prompt. Extract the following two pieces of information: 1) The language of the prompt, 2) The user's intention and purpose. Present the result in JSON format like this: {'language': '...', 'intention_and_purpose': '...'}"},
-            {"role": "user", "content": f"Analyze the following prompt: {initial_prompt}"}
-        ]
-        out = self.create_completion(messages)
-        analysis = json.loads(out)
-        return analysis['language'], analysis['intention_and_purpose']
 
     def run_character_prompts(self, initial_prompt: str, rounds: int) -> Dict[str, str]:
         results = {}
@@ -70,36 +75,34 @@ class Magi(Character):
     def compare_and_upgrade(self, results: Dict[str, str], original_prompt: str) -> Tuple[str, List[str]]:
         user_content =  f"Original Prompt: {original_prompt}\n\nImproved Prompt: {results}"
         messages = [
-            {"role": "system", "content": f'Purpose of the expected user prompt: {self.original_purpose}' + SYSTEM_MAGI_PROMPT},
+            {"role": "system", "content": SYSTEM_MAGI_PROMPT + f'Expected purpose from user initial prompt is {self.original_purpose}. Check if the improved prompt meet the original purpose. Answer in {self.original_language}' },
             {"role": "user", "content": user_content}
         ]
         out = self.create_completion(messages)
-        self.logger.info(Fore.GREEN + "평가 및 업그레이드 결과: " + out)
+        self.logger.info(Fore.GREEN + "Evaluation and Upgrade Result: " + out)
         result = json.loads(out)
 
         return result['updated_prompt'], result['key_improvements']
         
 
     def recursive_prompt_upgrade(self, remain_rounds: int, initial_prompt: str, user_prompt: Optional[str] = None) -> str:
-        if not self.original_language:
-            initial_language, initial_purpose = self.analyze_initial_prompt(initial_prompt)
-            self.original_language = initial_language
-            self.original_purpose = initial_purpose
-            initial_prompt = self.translate_to_english(initial_prompt)
-
+        if(self.max_rounds is None):
+            self.initialize(remain_rounds, initial_prompt);
+        
         if remain_rounds <= 0:
             self.logger.info("Upgrade process completed.")
-            if self.original_language != 'English':
-                result =  self.translate_to_original_language(initial_prompt)
-            else:
-                result = initial_prompt
-            
+            # if self.original_language != 'English':
+            #     result =  self.translate_to_original_language(initial_prompt)
+            # else:
+            #     result = initial_prompt
+
+            result = initial_prompt
             self.logger.info(Fore.YELLOW + "Final Prompt: "+f"{result}")
             return result
 
 
 
-        self.logger.info(Fore.GREEN + f"------------------------Round { remain_rounds } Start------------------------")
+        self.logger.info(Fore.GREEN + f"------------------------Round { self.max_rounds - remain_rounds + 1 } {"(final)" if remain_rounds == 0 else f"({remain_rounds} rounds left)"} Start------------------------")
         messages = [{"role": "user", "content": initial_prompt}] if user_prompt is None else [
             {"role": "system", "content": initial_prompt},
             {"role": "user", "content": user_prompt}

@@ -6,13 +6,13 @@ from prompts import SYSTEM_COMMON_PROMPT
 from utils import init_logger
 
 class Character:
-    def __init__(self, name: str, model_name: str, personas: str):
+    def __init__(self, name: str, model_name: str, personas: str, magi):
         self.name = name
         self.model_name = model_name
         self.personas = personas
         self.client = OpenAI()
         self.logger = init_logger(name)
-        
+        self.magi = magi
 
     def create_completion(self, messages: List[Dict[str, str]]) -> str:
         response = self.client.chat.completions.create(
@@ -26,7 +26,7 @@ class Character:
     def update_prompt(self, original: str, output) -> Tuple[str, List[str]]:
         user_content = f"Prompt: {original}\n\nOutput: {output}\n\n"
         messages = [
-            {"role": "system", "content": "Your name is " + self.name + " and " + self.personas + SYSTEM_COMMON_PROMPT},
+            {"role": "system", "content": "Your name is " + self.name + " and " + self.personas + SYSTEM_COMMON_PROMPT + f'Expected purpose from user initial prompt is {self.magi.original_purpose}. Check if the improved prompt is aligned with the original purpose. Answer in {self.magi.original_language}'},
             {"role": "user", "content": user_content},
         ]
         updated = self.create_completion(messages)

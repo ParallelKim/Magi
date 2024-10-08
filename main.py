@@ -2,7 +2,7 @@ from magi import Magi
 
 if __name__ == "__main__":
     magi = Magi(model_name="gpt-4o-mini")
-    initial_prompt = "프론트엔드 개발자 이력서를 만들어줘"
+    initial_prompt = "난너무기여워"
     user_prompt = None
     max_rounds = 5
 
