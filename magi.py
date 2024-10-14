@@ -6,7 +6,7 @@ from characters import Character
 from openai import OpenAI
 
 from prompts import PERSONA_PROMPT, SYSTEM_MAGI_PROMPT
-from utils import init_logger
+from utils import init_logger, save_result
 
 class Magi(Character):
     def __init__(self, model_name: str):
@@ -16,6 +16,7 @@ class Magi(Character):
         self.original_language = None
         self.original_purpose = None
         self.max_rounds = None
+        self.prompts = []
 
     def initialize(self, remain_rounds: int, initial_prompt: str):
         self.max_rounds = remain_rounds
@@ -86,21 +87,11 @@ class Magi(Character):
         
 
     def recursive_prompt_upgrade(self, remain_rounds: int, initial_prompt: str, user_prompt: Optional[str] = None) -> str:
-        if(self.max_rounds is None):
-            self.initialize(remain_rounds, initial_prompt);
+        if self.max_rounds is None:
+            self.initialize(remain_rounds, initial_prompt)
+            self.prompts = [initial_prompt]  # 최초 프롬프트 저장
         
-        if remain_rounds <= 0:
-            self.logger.info("Upgrade process completed.")
-            # if self.original_language != 'English':
-            #     result =  self.translate_to_original_language(initial_prompt)
-            # else:
-            #     result = initial_prompt
-
-            result = initial_prompt
-            self.logger.info(Fore.YELLOW + "Final Prompt: "+f"{result}")
-            return result
-
-
+    
 
         self.logger.info(Fore.GREEN + f"------------------------Round { self.max_rounds - remain_rounds + 1 } {"(final)" if remain_rounds == 0 else f"({remain_rounds} rounds left)"} Start------------------------")
         messages = [{"role": "user", "content": initial_prompt}] if user_prompt is None else [
@@ -111,11 +102,19 @@ class Magi(Character):
         out = self.create_completion(messages)
         self.logger.info(Fore.YELLOW + "Messages: " + Fore.RESET + f"{messages}")
         self.logger.info(Fore.YELLOW + "Output: " + Fore.RESET + f"{out}")
-
         results = self.run_character_prompts(initial_prompt, out)
         updated_prompt, key_improvements = self.compare_and_upgrade(results, initial_prompt)
         
         self.logger.info(Fore.BLUE + "Updated Prompt: "+ Fore.RESET + f"{updated_prompt}")
         self.logger.info(Fore.BLUE + "Key Improvements: "+ Fore.RESET + f"{key_improvements}")
+        
+        self.prompts.append(updated_prompt) 
+
+        if remain_rounds <= 0:
+            self.logger.info("Upgrade process completed.")
+            result = initial_prompt
+            self.logger.info(Fore.YELLOW + "Final Prompt: "+f"{result}")
+            save_result(self.prompts, f"{self.logger.handlers[0].stream.getvalue()}")
+            return result
 
         return self.recursive_prompt_upgrade(remain_rounds - 1, updated_prompt, user_prompt)
